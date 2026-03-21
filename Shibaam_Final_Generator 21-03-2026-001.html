@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shibaam - Live Quotation Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; }
+        
+        /* PDF Layout Styling */
+        .pdf-document { background: white; padding: 40px; width: 210mm; min-height: 297mm; margin: auto; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border: 1px solid #cbd5e1; position: relative; }
+        .pdf-header-img { width: 100%; max-height: 140px; object-fit: contain; margin-bottom: 20px; border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; }
+        .pdf-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
+        .pdf-table th, .pdf-table td { border: 1px solid #d1d5db; padding: 8px 6px; text-align: left; vertical-align: middle; }
+        .pdf-table th { background-color: #f1f5f9; font-weight: 700; text-transform: uppercase; color: #334155; font-size: 10px; }
+        
+        .item-thumbnail { max-height: 60px; max-width: 80px; object-fit: contain; border: 1px solid #e5e7eb; padding: 2px; border-radius: 4px; background: #fff; }
+        .preview-img-box { width: 100%; height: 180px; border: 2px dashed #94a3b8; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #f1f5f9; overflow: hidden; }
+        .preview-img-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        
+        /* Loading Screen */
+        #loader { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.98); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .spinner { border: 4px solid #e2e8f0; border-top: 4px solid #2563eb; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="p-4 md:p-6 text-gray-800">
+
+<div id="loader">
+    <div class="spinner mb-4"></div>
+    <h2 class="text-2xl font-bold text-blue-900" id="loader-title">Connecting to SheetDB API...</h2>
+    <p class="text-sm text-gray-500 mt-2 font-medium" id="loader-text">Fetching live Shibaam catalog securely.</p>
+</div>
+
+<div class="max-w-[1600px] mx-auto grid grid-cols-1 xl:grid-cols-12 gap-6 items-start hidden" id="app-content">
+    
+    <div class="xl:col-span-5 space-y-6 sticky top-4">
+        
+        <div class="bg-white p-6 rounded-xl shadow-lg border-t-4 border-blue-600">
+            <h1 class="text-2xl font-extrabold text-gray-900 mb-6 tracking-tight flex items-center justify-between">
+                Shibaam Quotation App
+                <span class="text-xs bg-green-100 text-green-800 px-3 py-1 rounded-full border border-green-300 shadow-sm">SheetDB Active 🟢</span>
+            </h1>
+
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Customer Name</label>
+                    <input type="text" id="cust-name" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 transition" placeholder="Enter Customer Name" oninput="updateLivePreview()">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Date</label>
+                    <input type="date" id="quote-date" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 transition" onchange="updateLivePreview()">
+                </div>
+            </div>
+
+            <div class="bg-blue-50 p-5 rounded-lg border border-blue-200 mb-6 shadow-inner">
+                <h3 class="font-bold text-blue-900 mb-4 border-b border-blue-200 pb-2">Plate Configuration</h3>
+                
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Select Pattern</label>
+                    <select id="pattern-select" class="w-full p-2.5 border border-gray-300 rounded bg-white font-bold focus:ring-2 focus:ring-blue-500 text-blue-900" onchange="handlePatternChange()">
+                        <option value="">-- Choose a plate pattern --</option>
+                    </select>
+                </div>
+
+                <div class="preview-img-box mb-4">
+                    <img id="live-preview-img" src="" style="display: none;" crossorigin="anonymous">
+                    <span id="preview-placeholder" class="text-gray-400 text-sm font-medium">Image preview</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Media Type</label>
+                        <select id="opt-media" class="w-full p-2 border border-gray-300 rounded bg-white text-sm focus:ring-1 focus:ring-blue-500"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Plate Color</label>
+                        <select id="opt-color" class="w-full p-2 border border-gray-300 rounded bg-white text-sm focus:ring-1 focus:ring-blue-500"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">LED Color</label>
+                        <select id="opt-led" class="w-full p-2 border border-gray-300 rounded bg-white text-sm focus:ring-1 focus:ring-blue-500"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Thickness</label>
+                        <select id="opt-thick" class="w-full p-2 border border-gray-300 rounded bg-white text-sm focus:ring-1 focus:ring-blue-500"></select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Rate (₹ / sq in)</label>
+                        <input type="number" id="opt-rate" class="w-full p-2 border border-gray-300 rounded bg-white text-sm font-bold text-green-700" step="0.01">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Notes</label>
+                        <input type="text" id="opt-notes" class="w-full p-2 border border-gray-300 rounded bg-white text-sm" placeholder="Any special notes...">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3 mb-4 p-3 bg-white border border-gray-200 rounded-md">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Length (in)</label>
+                        <input type="number" id="length" class="w-full p-2 border border-gray-300 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Height (in)</label>
+                        <input type="number" id="height" class="w-full p-2 border border-gray-300 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Qty</label>
+                        <input type="number" id="qty" class="w-full p-2 border border-gray-300 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500" value="1" min="1">
+                    </div>
+                </div>
+
+                <button onclick="addItem()" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md transition transform active:scale-95 text-sm tracking-wide">
+                    ➕ ADD TO QUOTATION
+                </button>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Terms & Conditions</label>
+                <textarea id="terms-input" rows="6" class="w-full p-3 border border-gray-300 rounded text-sm text-gray-700 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500" oninput="updateLivePreview()"></textarea>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="generatePDF()" id="pdf-btn" class="flex-1 bg-green-600 text-white px-4 py-4 rounded-lg font-extrabold hover:bg-green-700 shadow-lg transition text-lg">
+                    📥 Download PDF Quotation
+                </button>
+                <button onclick="clearQuote()" class="bg-red-50 text-red-600 px-6 py-4 rounded-lg font-bold hover:bg-red-100 border border-red-200 transition">
+                    Clear List
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="xl:col-span-7 overflow-x-auto bg-gray-300 p-8 rounded-xl border border-gray-400 shadow-inner flex justify-center" style="height: calc(100vh - 2rem);">
+        
+        <div id="pdf-document" class="pdf-document">
+            
+            <img src="https://ik.imagekit.io/shibaamsethji/NAME%20PLATES%20QUOTATION/Screenshot%202026-03-21%20000235_sWM1mb8ht.png" crossorigin="anonymous" class="pdf-header-img" alt="Shibaam Header">
+
+            <div class="flex justify-between items-end mb-4">
+                <div>
+                    <h2 class="text-3xl font-black text-blue-900 mb-1 tracking-wide">QUOTATION</h2>
+                </div>
+                <div class="text-right text-sm">
+                    <p class="font-bold text-gray-900">Customer: <span id="pdf-cust" class="font-semibold border-b border-gray-400 inline-block min-w-[150px] text-gray-700 text-left"></span></p>
+                    <p class="font-bold text-gray-900 mt-1">Date: <span id="pdf-date" class="font-semibold text-gray-700"></span></p>
+                </div>
+            </div>
+
+            <table class="pdf-table">
+                <thead>
+                    <tr>
+                        <th style="width: 80px; text-align: center;">Image</th>
+                        <th>Product Description & Specs</th>
+                        <th style="width: 70px; text-align: center;">Size (In)</th>
+                        <th style="width: 50px; text-align: center;">Sq In</th>
+                        <th style="width: 60px; text-align: center;">Rate</th>
+                        <th style="width: 40px; text-align: center;">Qty</th>
+                        <th style="width: 85px; text-align: right;">Total (₹)</th>
+                    </tr>
+                </thead>
+                <tbody id="pdf-body">
+                    </tbody>
+            </table>
+
+            <div class="mt-6 flex justify-end">
+                <div class="w-72 bg-gray-50 p-4 rounded border border-gray-200 shadow-sm">
+                    <div class="flex justify-between text-gray-700 mb-2 font-semibold text-sm">
+                        <span>Subtotal:</span>
+                        <span id="pdf-subtotal">₹ 0.00</span>
+                    </div>
+                    <div class="flex justify-between text-gray-700 mb-2 pb-2 border-b border-gray-300 font-semibold text-sm">
+                        <span>GST (18%):</span>
+                        <span id="pdf-gst">₹ 0.00</span>
+                    </div>
+                    <div class="flex justify-between font-black text-xl text-gray-900">
+                        <span>Total Amount:</span>
+                        <span id="pdf-grand-total">₹ 0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-10">
+                <h3 class="font-bold text-gray-900 border-b-2 border-gray-800 pb-1 mb-2 inline-block text-sm">Terms and Conditions:</h3>
+                <div id="pdf-terms" class="text-xs text-gray-700 whitespace-pre-line leading-relaxed font-semibold"></div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+
+<script>
+    // SheetDB API URL
+    const SHEETDB_API_URL = "https://sheetdb.io/api/v1/6zxp2z4xpakze";
+    const IMAGE_BASE_URL = "https://ik.imagekit.io/shibaamsethji/NAME%20PLATES%20QUOTATION/";
+
+    // Standard T&C 
+    const defaultTerms = `50% Payment advance for commencing work
+Material delivery only after 100% payment received
+Any kind of Fabrication work onsite or Fittings ________/- xtra and fixtures will be extra/included
+Transportation extra/included
+We provide a free digital preview of the name plate before final production.`;
+    
+    // Application State Variables
+    let rawPatternsList = [];
+    let options = { media: [], color: [], led: [], thick: [] };
+    let quoteItems = [];
+
+    // Helper: Safely fetch JSON from SheetDB and force headers to lowercase 
+    // so we can reliably match column names.
+    async function fetchSheetDB(sheetName) {
+        const url = `${SHEETDB_API_URL}?sheet=${sheetName}`;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("Failed to fetch data.");
+            const json = await response.json();
+            
+            // Standardize keys (headers) to lowercase for easy matching
+            return json.map(row => {
+                let cleanRow = {};
+                for (let key in row) {
+                    if (row.hasOwnProperty(key)) {
+                        cleanRow[key.trim().toLowerCase()] = row[key];
+                    }
+                }
+                return cleanRow;
+            });
+        } catch(e) {
+            throw e;
+        }
+    }
+
+    // Initialize App: Fetch both sheets securely via API
+    async function initApp() {
+        document.getElementById('terms-input').value = defaultTerms;
+        document.getElementById('quote-date').valueAsDate = new Date();
+
+        try {
+            // Load Sheet1 (Database) and Sheet2 (Dropdown Options)
+            // If Sheet2 is missing or fails, it will return an empty array without crashing Sheet1
+            const [data1, data2] = await Promise.all([ 
+                fetchSheetDB("Sheet1"), 
+                fetchSheetDB("Sheet2").catch(() => []) 
+            ]);
+
+            // Process Sheet 2 (Dropdown Options)
+            data2.forEach(row => {
+                if (row['media type']) options.media.push(row['media type']);
+                if (row['color'] || row['plate color']) options.color.push(row['color'] || row['plate color']);
+                if (row['led color']) options.led.push(row['led color']);
+                if (row['thickness']) options.thick.push(row['thickness']);
+            });
+
+            // Process Sheet 1 (Catalog Database)
+            data1.forEach(row => {
+                let num = row['pattern number'] || row['pattern'];
+                if (num) {
+                    rawPatternsList.push({
+                        num: num,
+                        name: row['pattern name'] || row['name'] || "",
+                        rate: parseFloat(row['sq inch rate gst paid'] || row['sq inch rate'] || row['rate']) || 0,
+                        img: row['link for image'] || row['image'] || "",
+                        media: row['media type'] || row['media'] || "N/A",
+                        color: row['color'] || row['plate color'] || "N/A",
+                        led: row['led color'] || row['led'] || "N/A",
+                        thick: row['thickness'] || "N/A",
+                        notes: row['notes'] || ""
+                    });
+                }
+            });
+
+            buildDropdowns();
+            
+            // Unhide UI
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('app-content').classList.remove('hidden');
+            updateLivePreview();
+
+        } catch (error) {
+            console.error("SheetDB Fetch Error:", error);
+            document.getElementById('loader-title').textContent = "Connection Error";
+            document.getElementById('loader-title').classList.add("text-red-600");
+            document.getElementById('loader-text').innerHTML = `Failed to read from SheetDB API.<br><button onclick="location.reload()" class="mt-4 bg-blue-600 text-white px-6 py-2 rounded shadow font-bold hover:bg-blue-700 transition">Retry Connection</button>`;
+        }
+    }
+
+    function buildDropdowns() {
+        const populateSelect = (arr, elId) => {
+            const el = document.getElementById(elId);
+            el.innerHTML = '<option value="">-- Choose Option --</option>';
+            [...new Set(arr)].forEach(val => {
+                if(val && val.toLowerCase() !== 'na') {
+                    const opt = document.createElement('option');
+                    opt.value = val; opt.textContent = val;
+                    el.appendChild(opt);
+                }
+            });
+            const custom = document.createElement('option');
+            custom.value = "N/A"; custom.textContent = "N/A";
+            el.appendChild(custom);
+        };
+
+        populateSelect(options.media, 'opt-media');
+        populateSelect(options.color, 'opt-color');
+        populateSelect(options.led, 'opt-led');
+        populateSelect(options.thick, 'opt-thick');
+
+        const patSelect = document.getElementById('pattern-select');
+        rawPatternsList.forEach((p, index) => {
+            const opt = document.createElement('option');
+            opt.value = index; 
+            opt.textContent = `${p.num} - ${p.name}`;
+            patSelect.appendChild(opt);
+        });
+    }
+
+    // Handles the selection of a pattern and fills fields
+    function handlePatternChange() {
+        const val = document.getElementById('pattern-select').value;
+        const imgEl = document.getElementById('live-preview-img');
+        const placeholder = document.getElementById('preview-placeholder');
+
+        if (val !== "") {
+            const p = rawPatternsList[val]; 
+            
+            // Force select existing value, or temporarily add it to dropdown if it's missing in Sheet 2
+            function syncDropdownValue(elementId, sheet1Val) {
+                const el = document.getElementById(elementId);
+                const valTarget = sheet1Val ? String(sheet1Val).trim() : "";
+                
+                let found = false;
+                Array.from(el.options).forEach(opt => {
+                    if(opt.value.toLowerCase() === valTarget.toLowerCase()) {
+                        el.value = opt.value;
+                        found = true;
+                    }
+                });
+                
+                if(!found && valTarget && valTarget.toLowerCase() !== "na") {
+                    const newOpt = document.createElement('option');
+                    newOpt.value = valTarget; newOpt.textContent = valTarget;
+                    el.appendChild(newOpt);
+                    el.value = valTarget;
+                } else if (!found) {
+                    el.value = "N/A";
+                }
+            }
+
+            syncDropdownValue('opt-media', p.media);
+            syncDropdownValue('opt-color', p.color);
+            syncDropdownValue('opt-led', p.led);
+            syncDropdownValue('opt-thick', p.thick);
+            
+            document.getElementById('opt-rate').value = p.rate;
+            document.getElementById('opt-notes').value = p.notes;
+
+            // Load Image logic
+            if (p.img && p.img.trim() !== "") {
+                let imgUrl = p.img;
+                if (!imgUrl.startsWith("http")) imgUrl = IMAGE_BASE_URL + imgUrl;
+                imgEl.src = imgUrl;
+                imgEl.style.display = 'block';
+                placeholder.style.display = 'none';
+            } else {
+                imgEl.style.display = 'none';
+                placeholder.style.display = 'block';
+            }
+        } else {
+            // Reset fields
+            ['opt-media','opt-color','opt-led','opt-thick'].forEach(id => document.getElementById(id).value = "");
+            document.getElementById('opt-rate').value = "";
+            document.getElementById('opt-notes').value = "";
+            imgEl.style.display = 'none';
+            placeholder.style.display = 'block';
+        }
+    }
+
+    // Add item to cart
+    function addItem() {
+        const patIdx = document.getElementById('pattern-select').value;
+        const l = parseFloat(document.getElementById('length').value) || 0;
+        const h = parseFloat(document.getElementById('height').value) || 0;
+        const q = parseInt(document.getElementById('qty').value) || 1;
+
+        if (patIdx === "" || l <= 0 || h <= 0) {
+            alert("Please choose a pattern and enter valid Length and Height measurements."); return;
+        }
+
+        const basePattern = rawPatternsList[patIdx];
+        
+        const finalMedia = document.getElementById('opt-media').value || "N/A";
+        const finalColor = document.getElementById('opt-color').value || "N/A";
+        const finalLed = document.getElementById('opt-led').value || "N/A";
+        const finalThick = document.getElementById('opt-thick').value || "N/A";
+        const finalRate = parseFloat(document.getElementById('opt-rate').value) || 0;
+        const finalNotes = document.getElementById('opt-notes').value || "";
+
+        const sqIn = l * h;
+        const total = sqIn * finalRate * q;
+
+        quoteItems.push({
+            num: basePattern.num,
+            name: basePattern.name,
+            img: basePattern.img,
+            media: finalMedia,
+            color: finalColor,
+            led: finalLed,
+            thick: finalThick,
+            rate: finalRate,
+            notes: finalNotes,
+            l: l, h: h, q: q, sqIn: sqIn, total: total
+        });
+
+        // Reset Inputs
+        document.getElementById('length').value = '';
+        document.getElementById('height').value = '';
+        document.getElementById('qty').value = '1';
+        
+        updateLivePreview();
+    }
+
+    // Refresh visual PDF canvas
+    function updateLivePreview() {
+        document.getElementById('pdf-cust').textContent = document.getElementById('cust-name').value;
+        const rawDate = document.getElementById('quote-date').value;
+        if(rawDate) {
+            const d = new Date(rawDate);
+            document.getElementById('pdf-date').textContent = d.toLocaleDateString('en-GB');
+        }
+        
+        document.getElementById('pdf-terms').textContent = document.getElementById('terms-input').value;
+
+        const tbody = document.getElementById('pdf-body');
+        tbody.innerHTML = '';
+        
+        let subTotal = 0;
+
+        if (quoteItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400 italic">No plates added to the quotation yet.</td></tr>`;
+        } else {
+            quoteItems.forEach(it => {
+                let imgUrl = it.img;
+                if(imgUrl && !imgUrl.startsWith("http")) imgUrl = IMAGE_BASE_URL + imgUrl;
+                
+                let specsHTML = `
+                    <span style="color:#64748b">Media:</span> <span style="font-weight:700; color:#1e293b">${it.media}</span> | 
+                    <span style="color:#64748b">Color:</span> <span style="font-weight:700; color:#1e293b">${it.color}</span><br>
+                    <span style="color:#64748b">LED:</span> <span style="font-weight:700; color:#1e293b">${it.led}</span> | 
+                    <span style="color:#64748b">Thick:</span> <span style="font-weight:700; color:#1e293b">${it.thick}</span>
+                `;
+                
+                if(it.notes && it.notes.trim() !== "na" && it.notes.trim() !== "") {
+                    specsHTML += `<br><span style="color:#dc2626; font-size:10px;">*Notes: ${it.notes}</span>`;
+                }
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td style="text-align:center">
+                            <img src="${imgUrl}" crossorigin="anonymous" class="item-thumbnail" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'50\\' height=\\'50\\'><text y=\\'25\\' font-size=\\'10\\'>No Image</text></svg>'">
+                        </td>
+                        <td>
+                            <div style="font-weight:900; font-size:13px; color:#1e3a8a; margin-bottom: 2px;">${it.num} - ${it.name}</div>
+                            <div style="font-size:10.5px; line-height:1.4;">${specsHTML}</div>
+                        </td>
+                        <td style="text-align:center; font-weight: 700;">${it.l}" x ${it.h}"</td>
+                        <td style="text-align:center">${it.sqIn.toFixed(1)}</td>
+                        <td style="text-align:center; font-weight: 700;">₹${it.rate.toFixed(2)}</td>
+                        <td style="text-align:center; font-weight: bold;">${it.q}</td>
+                        <td style="text-align:right; font-weight:800; font-size:13px; color:#0f172a;">₹${it.total.toFixed(2)}</td>
+                    </tr>
+                `;
+                subTotal += it.total;
+            });
+        }
+
+        const gst = subTotal * 0.18;
+        const grandTotal = subTotal + gst;
+
+        document.getElementById('pdf-subtotal').textContent = '₹ ' + subTotal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('pdf-gst').textContent = '₹ ' + gst.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('pdf-grand-total').textContent = '₹ ' + grandTotal.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function clearQuote() {
+        quoteItems = [];
+        updateLivePreview();
+    }
+
+    function generatePDF() {
+        if(quoteItems.length === 0) { alert("Cart is empty."); return; }
+
+        const btn = document.getElementById('pdf-btn');
+        btn.innerHTML = "⏳ Processing...";
+        btn.disabled = true;
+
+        const customer = document.getElementById('cust-name').value || 'Customer';
+        const element = document.getElementById('pdf-document');
+
+        // Hide shadows before printing
+        element.style.boxShadow = "none";
+        element.style.border = "none";
+
+        const opt = {
+            margin:       [0.3, 0.3, 0.3, 0.3],
+            filename:     'Shibaam_Quotation_' + customer.replace(/\s+/g, '_') + '.pdf',
+            image:        { type: 'jpeg', quality: 1.0 },
+            html2canvas:  { scale: 2, useCORS: true, logging: false },
+            jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+        };
+
+        html2pdf().set(opt).from(element).save().then(() => {
+            btn.innerHTML = "📥 Download PDF Quotation";
+            btn.disabled = false;
+            // Restore visual layout
+            element.style.boxShadow = "0 10px 15px -3px rgba(0, 0, 0, 0.1)";
+            element.style.border = "1px solid #cbd5e1";
+        }).catch(err => {
+            alert("Error generating PDF.");
+            btn.innerHTML = "📥 Download PDF Quotation";
+            btn.disabled = false;
+        });
+    }
+
+    window.onload = initApp;
+</script>
+</body>
+</html>
