@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shibaam Rate Calculator</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+:root {
+    --primary:#0d1b4c;
+    --accent:#ff5a1f;
+    --bg:#f1f4f9;
+}
+
+/* GENERAL */
+body{
+    font-family:Segoe UI;
+    background:var(--bg);
+    margin:0;
+}
+
+/* HEADER */
+.header{
+    background:linear-gradient(135deg,#0d1b4c,#1f3c88);
+    color:white;
+    padding:15px;
+    text-align:center;
+}
+
+.header img{
+    height:60px;
+}
+
+/* LAYOUT */
+.container{
+    display:flex;
+    gap:20px;
+    padding:20px;
+    flex-wrap:wrap;
+}
+
+/* CARD */
+.card{
+    background:white;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 10px 25px rgba(0,0,0,0.08);
+    flex:1;
+    min-width:320px;
+}
+
+/* INPUT */
+input,select{
+    width:100%;
+    padding:10px;
+    border-radius:6px;
+    border:1px solid #ddd;
+    margin-top:5px;
+}
+
+/* GRID */
+.grid-2{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+}
+
+/* BUTTONS */
+button{
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+    font-weight:bold;
+}
+
+.btn-main{background:var(--primary);color:white;}
+.btn-reset{background:#c62828;color:white;}
+.btn-main:hover{opacity:.9}
+
+/* RESULT */
+.result{
+    background:white;
+    padding:20px;
+    border-radius:12px;
+    box-shadow:0 10px 25px rgba(0,0,0,0.08);
+}
+
+.result h3{
+    text-align:center;
+    color:var(--primary);
+}
+
+.row{
+    display:flex;
+    justify-content:space-between;
+    padding:6px 0;
+    border-bottom:1px dashed #ccc;
+}
+
+.total{
+    font-size:20px;
+    font-weight:bold;
+    color:var(--accent);
+}
+
+/* UPLOAD */
+.upload{
+    border:2px dashed var(--primary);
+    padding:15px;
+    text-align:center;
+    cursor:pointer;
+    margin-bottom:10px;
+}
+
+/* PDF */
+#pdfViewer{
+    height:400px;
+    display:none;
+    margin-top:10px;
+}
+
+iframe{
+    width:100%;
+    height:100%;
+    border:none;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="header">
+<img src="https://ik.imagekit.io/shibaamsethji/letter%20rate%20calulator/shibaam%20logo_WEbMsqzq4">
+<h2>Shibaam Rate Calculator</h2>
+</div>
+
+<div class="container">
+
+<div class="card">
+
+<div class="upload" onclick="pdfFile.click()">
+Upload PDF
+<input type="file" id="pdfFile" hidden onchange="handlePDF(event)">
+</div>
+
+<div class="grid-2">
+<input placeholder="Party Name" id="partyName">
+<input placeholder="Job No" id="jobNum">
+</div>
+
+<select id="materialDrop" onchange="syncRates()"></select>
+
+<div class="grid-2">
+<input type="number" placeholder="Media Rate" id="editMediaRate">
+<input type="number" placeholder="Cutting Rate" id="editCuttingRate">
+</div>
+
+<input type="number" placeholder="Bending Rate" id="editBendingRate">
+<input type="number" placeholder="Thickness" id="sheetThickness">
+
+<div class="grid-2">
+<input type="number" placeholder="Length" id="length">
+<input type="number" placeholder="Height" id="height">
+</div>
+
+<div class="grid-2">
+<input type="number" placeholder="Cut Length" id="cutInput">
+<input type="number" placeholder="Pierce Count" id="pierceInput">
+</div>
+
+<input type="number" placeholder="Bend Count" id="bendInput">
+
+<button class="btn-main" onclick="calculate()">Calculate</button>
+<button class="btn-reset" onclick="resetCalc()">Reset</button>
+
+<div id="pdfViewer">
+<iframe id="pdfFrame"></iframe>
+</div>
+
+</div>
+
+<!-- RESULT -->
+<div class="result" id="resultBox" style="display:none">
+
+<h3>Estimation Slip</h3>
+
+<div class="row"><span>Party</span><span id="r_party"></span></div>
+<div class="row"><span>Material</span><span id="r_mat"></span></div>
+<div class="row"><span>Weight</span><span id="r_kg"></span></div>
+
+<br>
+
+<div class="row"><span>Material</span><span id="r_m"></span></div>
+<div class="row"><span>Cutting</span><span id="r_c"></span></div>
+<div class="row"><span>Bending</span><span id="r_b"></span></div>
+
+<div class="row"><span>GST</span><span id="r_g"></span></div>
+
+<div class="row total"><span>Total</span><span id="r_t"></span></div>
+
+<button onclick="downloadPNG()" class="btn-main">Download PNG</button>
+
+</div>
+
+</div>
+
+<script>
+const API_URL="https://script.google.com/macros/s/AKfycbxgmGtzvBNv-35I1mGiwqEj66Zxqg7f6jR5wPgUdjc1HuL4sMkAVU93kd1cbjDV-wcs/exec";
+let sheetData=[];
+
+function format(v){return "₹ "+v.toFixed(2)}
+
+async function loadData(){
+let r=await fetch(API_URL);
+sheetData=await r.json();
+
+let d=document.getElementById("materialDrop");
+sheetData.forEach((x,i)=>{
+let o=document.createElement("option");
+o.value=i;
+o.text=x.Material+" ("+x.Thickness+"mm)";
+d.add(o);
+});
+}
+loadData();
+
+function syncRates(){
+let row=sheetData[materialDrop.value];
+editMediaRate.value=row["media rate"]||0;
+editCuttingRate.value=row["cutting rate"]||0;
+editBendingRate.value=row["bending rate"]||0;
+sheetThickness.value=row["Thickness"]||0;
+}
+
+function calculate(){
+
+let row=sheetData[materialDrop.value];
+
+let L=+length.value;
+let H=+height.value;
+let T=+sheetThickness.value;
+
+let KG=L*H*T*0.000008;
+
+let m=KG*editMediaRate.value;
+let c=cutInput.value*editCuttingRate.value*T;
+let b=bendInput.value*editBendingRate.value*T;
+
+let sub=m+c+b;
+let gst=sub*0.18;
+let total=sub+gst;
+
+r_party.innerText=partyName.value;
+r_mat.innerText=row.Material;
+r_kg.innerText=KG.toFixed(2);
+
+r_m.innerText=format(m);
+r_c.innerText=format(c);
+r_b.innerText=format(b);
+r_g.innerText=format(gst);
+r_t.innerText=format(total);
+
+resultBox.style.display="block";
+}
+
+function resetCalc(){
+document.querySelectorAll("input").forEach(i=>i.value="");
+resultBox.style.display="none";
+}
+
+function handlePDF(e){
+pdfFrame.src=URL.createObjectURL(e.target.files[0]);
+pdfViewer.style.display="block";
+}
+
+function downloadPNG(){
+html2canvas(document.querySelector(".result")).then(c=>{
+let a=document.createElement("a");
+a.href=c.toDataURL();
+a.download="Shibaam.png";
+a.click();
+});
+}
+</script>
+
+</body>
+</html>
